@@ -1,0 +1,26 @@
+{
+  "name": "sails-oracle-db",
+  "version": "0.0.1",
+  "description": "sails oracle adapter",
+  "main": "lib/adapter",
+  "scripts": {
+    "test": "mocha --compilers js:mocha-traceur test/*",
+    "babel": "babel lib --out-dir dist"
+  },
+  "keywords": [
+    "sails",
+    "oracle"
+  ],
+  "author": "Ryan Quinn",
+  "license": "MIT",
+  "devDependencies": {
+    "mocha": "^2.2.5",
+    "mocha-traceur": "^2.1.0",
+    "should": "^7.1.0"
+  },
+  "dependencies": {
+    "bluebird": "^2.9.34",
+    "lodash": "^3.10.1",
+    "waterline-sequel": "^0.5.0"
+  }
+}
