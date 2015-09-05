@@ -1,16 +1,39 @@
 import should from 'should'
 import utils from '../../dist/utils'
 const results = {
-  rows: [
-    ['id', 'NUMBER', 'Y'],
-    ['name', 'VARCHAR2', 'N'],
-    ['email', 'VARCHAR2', 'Y'],
-    ['title', 'VARCHAR2', 'Y'],
-    ['phone', 'VARCHAR2', 'Y'],
-    ['type', 'VARCHAR2', 'Y'],
-    ['favoriteFruit', 'VARCHAR2', 'Y'],
-    ['age', 'NUMBER', 'Y']
-  ],
+  rows: [{
+    COLUMN_NAME: 'id',
+    DATA_TYPE: 'NUMBER',
+    NULLABLE: 'Y'
+  }, {
+    COLUMN_NAME: 'name',
+    DATA_TYPE: 'VARCHAR2',
+    NULLABLE: 'N'
+  }, {
+    COLUMN_NAME: 'email',
+    DATA_TYPE: 'VARCHAR2',
+    NULLABLE: 'Y'
+  }, {
+    COLUMN_NAME: 'title',
+    DATA_TYPE: 'VARCHAR2',
+    NULLABLE: 'Y'
+  }, {
+    COLUMN_NAME: 'phone',
+    DATA_TYPE: 'VARCHAR2',
+    NULLABLE: 'Y'
+  }, {
+    COLUMN_NAME: 'type',
+    DATA_TYPE: 'VARCHAR2',
+    NULLABLE: 'Y'
+  }, {
+    COLUMN_NAME: 'favoriteFruit',
+    DATA_TYPE: 'VARCHAR2',
+    NULLABLE: 'Y'
+  }, {
+    COLUMN_NAME: 'age',
+    DATA_TYPE: 'NUMBER',
+    NULLABLE: 'Y'
+  }],
   resultSet: undefined,
   outBinds: undefined,
   rowsAffected: undefined,
@@ -23,11 +46,11 @@ const results = {
   }]
 }
 
-describe.skip('util tests', function() {
+describe('util tests', function() {
   it('should transform select results into a schema', (done) => {
-      const norm = utils.normalizeSchema(results)
-      norm.id.type.should.equal('NUMBER')
-      done()
+    const norm = utils.normalizeSchema(results, {})
+    norm.id.type.should.equal('NUMBER')
+    done()
   })
 
   it('should use the correct parameter symbol', (done) => {

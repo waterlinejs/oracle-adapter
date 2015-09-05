@@ -1,6 +1,6 @@
 var adapter = require('../../dist/adapter'),
-    should = require('should'),
-    support = require('./support/bootstrap');
+  should = require('should'),
+  support = require('./support/bootstrap');
 
 describe('adapter define', function() {
 
@@ -9,8 +9,8 @@ describe('adapter define', function() {
    */
 
   before(function(done) {
-    support.registerConnection(['test_define', 'user'], function () {
-        done();
+    support.registerConnection(['test_define', 'user'], function() {
+      done();
     });
   });
 
@@ -20,23 +20,23 @@ describe('adapter define', function() {
 
   // Attributes for the test table
   var definition = {
-    id    : {
+    id: {
       type: 'number',
       autoIncrement: true
     },
-    name  : {
+    name: {
       type: 'string',
       notNull: true
     },
-    email : 'string',
-    title : 'string',
-    phone : 'string',
-    type  : 'string',
-    favoriteFruit : {
+    email: 'string',
+    title: 'string',
+    phone: 'string',
+    type: 'string',
+    favoriteFruit: {
       defaultsTo: 'blueberry',
       type: 'string'
     },
-    age   : 'number'
+    age: 'number'
   };
 
   /**
@@ -53,10 +53,8 @@ describe('adapter define', function() {
       it('should build the table', function(done) {
 
         adapter.define('test', 'test_define', definition, function(err) {
-          console.log('define err?', err)
           if (err) return done(err)
           adapter.describe('test', 'test_define', function(err, result) {
-            console.log('define result', err, result)
             Object.keys(result).length.should.eql(8);
             done();
           });
@@ -64,36 +62,40 @@ describe('adapter define', function() {
 
       });
 
-      /*
       // notNull constraint
       it('should add a notNull constraint', function(done) {
-        adapter.define('test', 'test_define', definition, function(err) {
-          support.Client(function(err, client, close) {
-            var query = "SELECT attnotnull FROM pg_attribute WHERE " +
-              "attrelid = 'test_define'::regclass AND attname = 'name'";
-            
-            client.query(query, function(err, result) {
-              result.rows[0].attnotnull.should.eql(true);
-              close();
-              done();
-            });
+          support.Client(function(err, client) {
+            var query = `SELECT column_name
+                         FROM USER_TAB_COLUMNS
+                         WHERE table_name = 'test_define'
+                         and NULLABLE = 'N'`
+
+            client.execute(query, [], function(err, result) {
+
+              result.rows[0].COLUMN_NAME.should.equal('name')
+
+              client.release((err) => {
+                if (err) console.log('err?', err)
+              })
+
+              done()
           });
         });
       });
-      */
 
     });
 
-    /*
     describe('reserved words', function() {
 
       after(function(done) {
         support.Client(function(err, client, close) {
-          var query = 'DROP TABLE "user";';
-          client.query(query, function(err) {
+          var query = 'DROP TABLE "user"';
+          client.execute(query, [], function(err) {
 
             // close client
-            close();
+            client.release((err) => {
+              if (err) console.log('err?', err)
+            })
 
             done();
           });
@@ -114,6 +116,5 @@ describe('adapter define', function() {
 
     });
 
-    */
   });
 });

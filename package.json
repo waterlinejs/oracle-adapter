@@ -21,6 +21,6 @@
   "dependencies": {
     "bluebird": "^2.9.34",
     "lodash": "^3.10.1",
-    "waterline-sequel": "^0.5.0"
+    "waterline-sequel": "git://github.com/ryanwilliamquinn/waterline-sequel#master"
   }
 }

@@ -30,6 +30,21 @@ var adapter = {
 
   connections: new Map(),
 
+  sqlOptions: {
+    parameterized: true,
+    caseSensitive: false,
+    escapeCharacter: '"',
+    casting: false,
+    canReturnValues: false,
+    escapeInserts: true,
+    declareDeleteAlias: false,
+    explicitTableAs: false,
+    prefixAlias: 'alias__',
+    stringDelimiter: "'",
+    rownum: true,
+    paramCharacter: ':'
+  },
+
   /**
    * This method runs when a connection is initially registered
    * at server-start-time. This is the only required method.
@@ -72,7 +87,7 @@ var adapter = {
 
     var queries = [];
     var query = {
-      sql: 'CREATE TABLE ' + collectionName + ' (' + _utils2['default'].buildSchema(definition) + ')'
+      sql: 'CREATE TABLE "' + collectionName + '" (' + _utils2['default'].buildSchema(definition) + ')'
     };
     queries.push(query);
 
@@ -81,12 +96,13 @@ var adapter = {
     if (autoIncrementFields.length > 0) {
       // create sequence and trigger queries for each one
       autoIncrementFields.forEach(function (field) {
-        var sequenceName = collectionName + '_seq';
+        var sequenceName = _utils2['default'].getSequenceName(collectionName, field);
         //queries.push({sql: `ALTER TABLE ${collectionName} ADD (CONSTRAINT ${collectionName}_pk PRIMARY KEY ("${field}"))`})
         queries.push({
           sql: 'CREATE SEQUENCE ' + sequenceName
         });
-        var triggerSql = 'CREATE OR REPLACE TRIGGER ' + collectionName + '_trg\n                         BEFORE INSERT ON ' + collectionName + '\n                         FOR EACH ROW\n                         BEGIN\n                         SELECT ' + sequenceName + '.NEXTVAL\n                         INTO :new."' + field + '" FROM dual; \n                         END;';
+        var triggerSql = 'CREATE OR REPLACE TRIGGER ' + collectionName + '_' + field + '_trg\n                         BEFORE INSERT ON "' + collectionName + '"\n                         FOR EACH ROW\n                         BEGIN\n                         SELECT ' + sequenceName + '.NEXTVAL\n                         INTO :new."' + field + '" FROM dual; \n                         END;';
+
         queries.push({
           sql: triggerSql,
           params: []
@@ -99,29 +115,33 @@ var adapter = {
   },
 
   describe: function describe(connectionName, collectionName, cb) {
-    collectionName = collectionName.toUpperCase();
+    var connectionObject = this.connections.get(connectionName);
+    var collection = connectionObject.collections[collectionName];
+
     // have to search for triggers/sequences?
     var queries = [];
-    queries[0] = {
+    queries.push({
       sql: 'SELECT COLUMN_NAME, DATA_TYPE, NULLABLE FROM USER_TAB_COLUMNS WHERE TABLE_NAME = \'' + collectionName + '\'',
       params: []
-    };
-    queries[1] = {
-      sql: "SELECT index_name,COLUMN_NAME FROM user_ind_columns WHERE table_name = :name",
-      params: [collectionName]
-    };
-    queries[2] = {
+    });
+    queries.push({
+      sql: 'SELECT index_name,COLUMN_NAME FROM user_ind_columns WHERE TABLE_NAME = \'' + collectionName + '\'',
+      params: []
+    });
+    queries.push({
       sql: 'SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner\n        FROM all_constraints cons, all_cons_columns cols WHERE cols.table_name = \n        :name AND cons.constraint_type = \'P\' AND cons.constraint_name = cols.constraint_name AND cons.owner = cols.owner\n        ORDER BY cols.table_name, cols.position',
       params: [collectionName]
-    };
+    });
 
     return this.executeQuery(connectionName, queries).spread(function (schema, indices, tablePrimaryKeys) {
-      cb(null, _utils2['default'].normalizeSchema(schema));
+      cb(null, _utils2['default'].normalizeSchema(schema, collection.definition));
     })['catch'](cb);
   },
 
   executeQuery: function executeQuery(connectionName, queries) {
     var _this2 = this;
+
+    _oracledb2['default'].outFormat = _oracledb2['default'].OBJECT;
 
     return new _bluebird2['default'](function (resolve, reject) {
       if (!_lodash2['default'].isArray(queries)) {
@@ -142,7 +162,9 @@ var adapter = {
             if (query.outFormat !== undefined) {
               options.outFormat = query.outFormat;
             }
+            // console.log('executing', query.sql, query.params)
             conn.execute(query.sql, query.params || [], options, function (queryError, res) {
+              // console.log('query result', queryError, res)
               if (queryError) return reject(queryError);
               memo.push(res);
               resolve(memo);
@@ -188,7 +210,7 @@ var adapter = {
     var collection = connectionObject.collections[table];
 
     var schemaName = collection.meta && collection.meta.schemaName ? _utils2['default'].escapeName(collection.meta.schemaName) + '.' : '';
-    var tableName = schemaName + _utils2['default'].escapeName(table).toUpperCase();
+    var tableName = schemaName + _utils2['default'].escapeName(table);
 
     // Build up a SQL Query
     var schema = connectionObject.schema;
@@ -203,16 +225,14 @@ var adapter = {
           }
     */
 
-    var sequel = new _waterlineSequel2['default'](schema, {
-      escapeInserts: true
-    } /*options*/);
+    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
 
     var incrementSequences = [];
-    var query;
+    var query = undefined;
 
     // Build a query for the specific query strategy
     try {
-      query = sequel.create(table.toUpperCase(), data);
+      query = sequel.create(table, data);
     } catch (e) {
       return cb(e);
     }
@@ -244,47 +264,177 @@ var adapter = {
       queryObj.outFormat = _oracledb2['default'].OBJECT;
     }
 
-    queryObj.sql = _utils2['default'].alterParameterSymbol(query.query);
+    queryObj.sql = query.query;
     queryObj.params = query.values;
 
     this.executeQuery(connectionName, queryObj).then(function (result) {
-      /*
-       * results! { rowsAffected: 1,
-       *   outBinds: [ [ 2 ] ],
-       *     rows: undefined,
-       *       metaData: undefined }
-       */
       // join the returning fields with the out params
       returningData.rawFields.forEach(function (field, index) {
         data[field] = result.outBinds[index][0];
       });
       cb(null, data);
     })['catch'](cb);
-    /*
-    // Run Query
-    client.query(query.query, query.values, function __CREATE__(err, result) {
-      if (err) return cb(handleQueryError(err));
-       // Cast special values
-      var values = processor.cast(table, result.rows[0]);
-       // Set Sequence value to defined value if needed
-      if (incrementSequences.length === 0) return cb(null, values);
-       function setSequence(item, next) {
-        var sequenceName = "'\"" + table + '_' + item + '_seq' + "\"'";
-        var sequenceValue = values[item];
-        var sequenceQuery = 'SELECT setval(' + sequenceName + ', ' + sequenceValue + ', true)';
-         client.query(sequenceQuery, function(err, result) {
-          if (err) return next(err);
-          next();
+  },
+
+  find: function find(connectionName, collectionName, options, cb, connection) {
+    var connectionObject = this.connections.get(connectionName);
+    var collection = connectionObject.collections[collectionName];
+
+    var schema = collection.waterline.schema;
+    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
+    var query = undefined;
+
+    // Build a query for the specific query strategy
+    try {
+      query = sequel.find(collectionName, options);
+    } catch (e) {
+      return cb(e);
+    }
+
+    this.executeQuery(connectionName, {
+      sql: query.query[0],
+      params: query.values[0]
+    }).then(function (results) {
+      cb(null, results && results.rows);
+    })['catch'](cb);
+  },
+
+  destroy: function destroy(connectionName, collectionName, options, cb, connection) {
+    var _this3 = this;
+
+    var connectionObject = this.connections.get(connectionName);
+    var collection = connectionObject.collections[collectionName];
+
+    // Build query
+    var schema = collection.waterline.schema;
+    var query = undefined;
+    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
+
+    // Build a query for the specific query strategy
+    try {
+      query = sequel.destroy(collectionName, options);
+    } catch (e) {
+      return cb(e);
+    }
+
+    this.find(connectionName, collectionName, options, function (err, res) {
+      _this3.executeQuery(connectionName, {
+        sql: query.query,
+        params: query.values
+      }).nodeify(cb);
+    }, connection);
+  },
+
+  drop: function drop(connectionName, collectionName, relations, cb, connection) {
+    var _this4 = this;
+
+    if (typeof relations == 'function') {
+      cb = relations;
+      relations = [];
+    }
+
+    relations.push(collectionName);
+
+    var queries = relations.reduce(function (memo, tableName) {
+      memo.push({
+        sql: 'DROP TABLE "' + tableName + '"'
+      });
+      var connectionObject = _this4.connections.get(connectionName);
+      var collection = connectionObject.collections[tableName];
+
+      var autoIncrementFields = _utils2['default'].getAutoIncrementFields(collection.definition);
+      if (autoIncrementFields.length > 0) {
+        autoIncrementFields.forEach(function (field) {
+          var sequenceName = _utils2['default'].getSequenceName(tableName, field);
+          memo.push({
+            sql: 'DROP SEQUENCE ' + sequenceName
+          });
         });
       }
-       async.each(incrementSequences, setSequence, function(err) {
-        if (err) return cb(err);
-        cb(null, values);
-      });
-    }, cb);
-    */
-  }
+      return memo;
+    }, []);
 
+    return this.executeQuery(connectionName, queries).nodeify(cb);
+  },
+
+  update: function update(connectionName, collectionName, options, values, cb, connection) {
+    //    var processor = new Processor();
+    var connectionObject = this.connections.get(connectionName);
+    var collection = connectionObject.collections[collectionName];
+
+    // Build find query
+    var schema = collection.waterline.schema;
+    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
+
+    /*
+        // Build a query for the specific query strategy
+        try {
+          //_query = sequel.find(collectionName, lodash.cloneDeep(options));
+          _query = sequel.find(collectionName, _.clone(options));
+        } catch (e) {
+          return cb(e);
+        }
+         execQuery(connections[connectionName], _query.query[0], [], function(err, results) {
+          if (err) {
+            if (LOG_ERRORS) {
+              console.log("#Error executing Find_1 (Update) " + err.toString() + ".");
+            }
+            return cb(err);
+          }
+          var ids = [];
+           var pk = 'id';
+          Object.keys(collection.definition).forEach(function(key) {
+            if (!collection.definition[key].hasOwnProperty('primaryKey'))
+              return;
+            pk = key;
+          });
+          // update statement will affect 0 rows
+          if (results.length === 0) {
+            return cb(null, []);
+          }
+           results.forEach(function(result) {
+            //ids.push(result[pk.toUpperCase()]);
+            ids.push(result[pk]);
+          });
+           // Prepare values
+          Object.keys(values).forEach(function(value) {
+            values[value] = utils.prepareValue(values[value]);
+          });
+           var definition = collection.definition;
+          var attrs = collection.attributes;
+           Object.keys(definition).forEach(function(columnName) {
+            var column = definition[columnName];
+             if (fieldIsDatetime(column)) {
+              if (!values[columnName])
+                return;
+              values[columnName] = SqlString.dateField(values[columnName]);
+            } else if (fieldIsBoolean(column)) {
+              values[columnName] = (values[columnName]) ? 1 : 0;
+            }
+          });
+    */
+    var query = undefined;
+    // Build query
+    try {
+      query = sequel.update(collectionName, options, values);
+    } catch (e) {
+      return cb(e);
+    }
+
+    console.log('the query!', query);
+
+    // Run query
+    this.executeQuery(connectionName, {
+      sql: query.query,
+      params: query.values
+    }).then(function (result) {
+      console.log('update result', result);
+      cb(null, result);
+    })['catch'](function (err) {
+      console.log('err', err);
+      cb(err);
+    });
+  }
 };
 
 exports['default'] = adapter;

@@ -36,7 +36,7 @@ describe('adapter create', function() {
       adapter.create('test', 'test_create', attributes, function(err, result) {
         // Check record was actually inserted
         support.Client(function(err, client) {
-          client.execute('SELECT * FROM test_create', [], function(err, result) {
+          client.execute('SELECT * FROM "test_create"', [], function(err, result) {
 
               // Test 1 row is returned
             result.rows.length.should.eql(1);

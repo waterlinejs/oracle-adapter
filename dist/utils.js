@@ -53,7 +53,7 @@ utils.object.hasOwnProperty = function (obj, prop) {
  */
 
 function escapeName(name) {
-  return '"' + name.toUpperCase() + '"';
+  return '"' + name + '"';
 }
 utils.escapeName = escapeName;
 
@@ -125,7 +125,11 @@ utils.mapAttributes = function (data) {
     i++;
   });
 
-  return { keys: keys, values: values, params: params };
+  return {
+    keys: keys,
+    values: values,
+    params: params
+  };
 };
 
 /**
@@ -163,48 +167,39 @@ utils.prepareValue = function (value) {
 /**
  * Normalize a schema for use with Waterline
  */
-utils.normalizeSchema = function (schema) {
-  var normalized = {};
-  //TODO throw here?
-  if (!schema) return normalized;
+utils.normalizeSchema = function (schema, definition) {
 
-  var clone = _.clone(schema.rows);
+  return _.reduce(schema.rows, function (memo, field) {
+    // console.log('definition normalize');console.log(definition);
+    var attrName = field.COLUMN_NAME.toLowerCase();
 
-  clone.forEach(function (column) {
+    Object.keys(definition).forEach(function (key) {
+      if (attrName === key.toLowerCase()) attrName = key;
+    });
+    var type = field.DATA_TYPE;
 
-    // Set Type
-    normalized[column[0]] = {
-      type: column[1]
+    // Remove (n) column-size indicators
+    type = type.replace(/\([0-9]+\)$/, '');
+
+    memo[attrName] = {
+      type: type
+      // defaultsTo: '',
+      //autoIncrement: field.Extra === 'auto_increment'
     };
 
-    // Check for Primary Key
-    /*
-    if(column.Constraint && column.C === 'p') {
-      normalized[column.Column].primaryKey = true;
-    }
-    */
-
-    // Check for Unique Constraint
-    if (column[2] === 'N') {
-      normalized[column[0]].unique = true;
+    if (field.primaryKey) {
+      memo[attrName].primaryKey = field.primaryKey;
     }
 
-    // Check for autoIncrement
-    /*
-    if(column.autoIncrement) {
-      normalized[column.Column].autoIncrement = column.autoIncrement;
+    if (field.unique) {
+      memo[attrName].unique = field.unique;
     }
-    */
 
-    // Check for index
-    /*
-    if(column.indexed) {
-      normalized[column.Column].indexed = column.indexed;
+    if (field.indexed) {
+      memo[attrName].indexed = field.indexed;
     }
-    */
-  });
-
-  return normalized;
+    return memo;
+  }, {});
 };
 
 /**
@@ -228,7 +223,7 @@ utils.sqlTypeCast = function (type) {
     case 'text':
     case 'mediumtext':
     case 'longtext':
-      return 'VARCHAR2(64)';
+      return 'varchar2(64)';
 
     case 'boolean':
       return 'BOOLEAN';
@@ -275,4 +270,29 @@ utils.getAutoIncrementFields = function (definition) {
       return key;
     }
   }));
+};
+
+utils.getSequenceName = function (collectionName, fieldName) {
+  return collectionName + '_' + fieldName + '_seq';
+};
+
+// get all return data
+utils.getReturningData = function (definition) {
+
+  // is there an autoincrementing key?  if so, we have to add a returning parameter to grab it
+  var returningData = _.reduce(definition, function (memo, attributes, field) {
+    memo.params.push({
+      type: oracledb[utils.sqlTypeCast(attributes.type)],
+      dir: oracledb.BIND_OUT
+    });
+    memo.fields.push('"' + field + '"');
+    memo.outfields.push(':' + field);
+    memo.rawFields.push(field);
+    return memo;
+  }, {
+    params: [],
+    fields: [],
+    rawFields: [],
+    outfields: []
+  });
 };

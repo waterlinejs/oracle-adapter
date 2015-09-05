@@ -120,26 +120,27 @@ Support.Client = function(cb) {
   oracle.getConnection(Support.Config, cb)
 };
 
-/*
 // Seed a record to use for testing
 Support.Seed = function(tableName, cb) {
-  pg.connect(Support.Config, function(err, client, done) {
+  oracle.getConnection(Support.Config, function(err, client) {
     createRecord(tableName, client, function(err) {
+      
+      client.release((err) => {
+        if (err) console.log('error releasing connection', err)
+      })
+
       if(err) {
-        done();
         return cb(err);
       }
 
-      done();
       cb();
     });
   });
 };
-*/
 
 
 function dropTable(table, client, cb) {
-  let escapedtable = '"' + table.toUpperCase() + '"';
+  let escapedtable = '"' + table + '"';
 
   var query = "DROP TABLE " + escapedtable;
   client.execute(query, [], function() {
@@ -148,18 +149,13 @@ function dropTable(table, client, cb) {
 }
 
 function dropSequence(table, client, cb) {
-  var query = `DROP SEQUENCE ${table}_seq`
+  var query = `DROP SEQUENCE ${table}_id_seq`
   client.execute(query, [], cb)
 }
 
 
 function createRecord(table, client, cb) {
-  table = '"' + table + '"';
+  const query = `INSERT INTO "${table}" ("field_1", "field_2") values ('foo', 'bar')`;
 
-  var query = [
-    "INSERT INTO " + table + ' (field_1, field_2)',
-    "values ('foo', 'bar');"
-  ].join('');
-
-  client.query(query, cb);
+  client.execute(query, [], {autoCommit: true}, cb);
 }
