@@ -2,7 +2,7 @@
   "name": "sails-oracle-db",
   "version": "0.0.1",
   "description": "sails oracle adapter",
-  "main": "lib/adapter",
+  "main": "dist/adapter",
   "scripts": {
     "test": "mocha --compilers js:mocha-traceur test/*",
     "babel": "babel lib --out-dir dist"
