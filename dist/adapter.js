@@ -26,9 +26,16 @@ var _lodash = require('lodash');
 
 var _lodash2 = _interopRequireDefault(_lodash);
 
+var createcount = 0;
+
+_oracledb2['default'].outFormat = _oracledb2['default'].OBJECT;
+
 var adapter = {
 
   connections: new Map(),
+
+  syncable: true,
+  schema: true,
 
   sqlOptions: {
     parameterized: true,
@@ -42,7 +49,8 @@ var adapter = {
     prefixAlias: 'alias__',
     stringDelimiter: "'",
     rownum: true,
-    paramCharacter: ':'
+    paramCharacter: ':',
+    convertDate: false
   },
 
   /**
@@ -56,6 +64,9 @@ var adapter = {
    */
   registerConnection: function registerConnection(connection, collections, cb) {
     var _this = this;
+
+    if (!connection.identity) return cb(new Error('no identity'));
+    if (this.connections.has(connection.identity)) return cb(new Error('too many connections'));
 
     var cxn = {
       identity: connection.identity,
@@ -134,14 +145,16 @@ var adapter = {
     });
 
     return this.executeQuery(connectionName, queries).spread(function (schema, indices, tablePrimaryKeys) {
-      cb(null, _utils2['default'].normalizeSchema(schema, collection.definition));
+      var normalized = _utils2['default'].normalizeSchema(schema, collection.definition);
+      if (_lodash2['default'].isEmpty(normalized)) {
+        return cb();
+      }
+      cb(null, normalized);
     })['catch'](cb);
   },
 
   executeQuery: function executeQuery(connectionName, queries) {
     var _this2 = this;
-
-    _oracledb2['default'].outFormat = _oracledb2['default'].OBJECT;
 
     return new _bluebird2['default'](function (resolve, reject) {
       if (!_lodash2['default'].isArray(queries)) {
@@ -149,6 +162,12 @@ var adapter = {
       }
       var cxn = _this2.connections.get(connectionName);
       cxn.pool.getConnection(function (err, conn) {
+
+        if (err && err.message.indexOf('ORA-24418') > -1) {
+          // retry
+          return resolve(_this2.executeQuery(connectionName, queries));
+        }
+
         if (err) return reject(err);
         return _bluebird2['default'].reduce(queries, function (memo, query) {
           return new _bluebird2['default'](function (resolve, reject) {
@@ -162,9 +181,9 @@ var adapter = {
             if (query.outFormat !== undefined) {
               options.outFormat = query.outFormat;
             }
-            // console.log('executing', query.sql, query.params)
+            //console.log('executing', query.sql, query.params)
             conn.execute(query.sql, query.params || [], options, function (queryError, res) {
-              // console.log('query result', queryError, res)
+              //console.log('query result', queryError, res)
               if (queryError) return reject(queryError);
               memo.push(res);
               resolve(memo);
@@ -172,7 +191,7 @@ var adapter = {
           });
         }, []).then(function (result) {
           conn.release(function (err) {
-            if (err) return reject(err);
+            if (err) console.log('problem releasing connection', err);
             resolve(_this2.handleResults(result));
           });
         })['catch'](function (err) {
@@ -198,14 +217,17 @@ var adapter = {
       this.connections = {};
       return cb();
     }
-    if (!this.connections[conn]) return cb();
-    delete this.connections[conn];
+    if (!this.connections.has(conn)) return cb();
+    this.connections['delete'](conn);
+    cb();
+  },
+
+  createEach: function createEach(connectionName, table, records, cb) {
     cb();
   },
 
   // Add a new row to the table
   create: function create(connectionName, table, data, cb) {
-
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[table];
 
@@ -215,6 +237,24 @@ var adapter = {
     // Build up a SQL Query
     var schema = connectionObject.schema;
     //var processor = new Processor(schema);
+
+    // Prepare values
+    Object.keys(data).forEach(function (value) {
+      data[value] = _utils2['default'].prepareValue(data[value]);
+    });
+
+    var definition = collection.definition;
+    _lodash2['default'].each(definition, function (column, name) {
+
+      /*
+      if (fieldIsDatetime(column)) {
+        data[name] = _.isUndefined(data[name]) ? 'null' : utils.dateField(data[name]);
+      } else */
+      if (fieldIsBoolean(column)) {
+        // no boolean type in oracle, so save it as a number
+        data[name] = data[name] ? 1 : 0;
+      }
+    });
 
     /*
           // Mixin WL Next connection overrides to sqlOptions
@@ -273,7 +313,9 @@ var adapter = {
         data[field] = result.outBinds[index][0];
       });
       cb(null, data);
-    })['catch'](cb);
+    })['catch'](function (err) {
+      cb(err);
+    });
   },
 
   find: function find(connectionName, collectionName, options, cb, connection) {
@@ -283,6 +325,10 @@ var adapter = {
     var schema = collection.waterline.schema;
     var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
     var query = undefined;
+    var limit = options.limit || null;
+    var skip = options.skip || null;
+    delete options.skip;
+    delete options.limit;
 
     // Build a query for the specific query strategy
     try {
@@ -291,8 +337,18 @@ var adapter = {
       return cb(e);
     }
 
+    var findQuery = query.query[0];
+
+    if (limit && skip) {
+      findQuery = 'SELECT * FROM (' + findQuery + ') WHERE LINE_NUMBER > ' + skip + ' and LINE_NUMBER <= ' + (skip + limit);
+    } else if (limit) {
+      findQuery = 'SELECT * FROM (' + findQuery + ') WHERE LINE_NUMBER <= ' + limit;
+    } else if (skip) {
+      findQuery = 'SELECT * FROM (' + findQuery + ') WHERE LINE_NUMBER > ' + skip;
+    }
+
     this.executeQuery(connectionName, {
-      sql: query.query[0],
+      sql: findQuery,
       params: query.values[0]
     }).then(function (results) {
       cb(null, results && results.rows);
@@ -305,23 +361,26 @@ var adapter = {
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[collectionName];
 
-    // Build query
     var schema = collection.waterline.schema;
     var query = undefined;
     var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
 
-    // Build a query for the specific query strategy
     try {
       query = sequel.destroy(collectionName, options);
     } catch (e) {
       return cb(e);
     }
 
-    this.find(connectionName, collectionName, options, function (err, res) {
+    this.find(connectionName, collectionName, options, function (err, findResult) {
       _this3.executeQuery(connectionName, {
         sql: query.query,
         params: query.values
-      }).nodeify(cb);
+      }).then(function (delRes) {
+        // verify delete?    
+        cb(null, findResult);
+      })['catch'](function (delErr) {
+        cb(delErr);
+      });
     }, connection);
   },
 
@@ -366,53 +425,6 @@ var adapter = {
     var schema = collection.waterline.schema;
     var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
 
-    /*
-        // Build a query for the specific query strategy
-        try {
-          //_query = sequel.find(collectionName, lodash.cloneDeep(options));
-          _query = sequel.find(collectionName, _.clone(options));
-        } catch (e) {
-          return cb(e);
-        }
-         execQuery(connections[connectionName], _query.query[0], [], function(err, results) {
-          if (err) {
-            if (LOG_ERRORS) {
-              console.log("#Error executing Find_1 (Update) " + err.toString() + ".");
-            }
-            return cb(err);
-          }
-          var ids = [];
-           var pk = 'id';
-          Object.keys(collection.definition).forEach(function(key) {
-            if (!collection.definition[key].hasOwnProperty('primaryKey'))
-              return;
-            pk = key;
-          });
-          // update statement will affect 0 rows
-          if (results.length === 0) {
-            return cb(null, []);
-          }
-           results.forEach(function(result) {
-            //ids.push(result[pk.toUpperCase()]);
-            ids.push(result[pk]);
-          });
-           // Prepare values
-          Object.keys(values).forEach(function(value) {
-            values[value] = utils.prepareValue(values[value]);
-          });
-           var definition = collection.definition;
-          var attrs = collection.attributes;
-           Object.keys(definition).forEach(function(columnName) {
-            var column = definition[columnName];
-             if (fieldIsDatetime(column)) {
-              if (!values[columnName])
-                return;
-              values[columnName] = SqlString.dateField(values[columnName]);
-            } else if (fieldIsBoolean(column)) {
-              values[columnName] = (values[columnName]) ? 1 : 0;
-            }
-          });
-    */
     var query = undefined;
     // Build query
     try {
@@ -421,21 +433,34 @@ var adapter = {
       return cb(e);
     }
 
-    console.log('the query!', query);
+    var returningData = _utils2['default'].getReturningData(collection.definition);
+    var queryObj = {};
+
+    if (returningData.params.length > 0) {
+      query.query += ' RETURNING ' + returningData.fields.join(', ') + ' INTO ' + returningData.outfields.join(', ');
+      query.values = query.values.concat(returningData.params);
+    }
+
+    queryObj.sql = query.query;
+    queryObj.params = query.values;
 
     // Run query
-    this.executeQuery(connectionName, {
-      sql: query.query,
-      params: query.values
-    }).then(function (result) {
-      console.log('update result', result);
-      cb(null, result);
+    this.executeQuery(connectionName, queryObj).then(function (result) {
+      cb(null, _utils2['default'].transformBulkOutbinds(result.outBinds, returningData.fields));
     })['catch'](function (err) {
       console.log('err', err);
       cb(err);
     });
   }
 };
+
+function fieldIsBoolean(column) {
+  return !_lodash2['default'].isUndefined(column.type) && column.type === 'boolean';
+}
+
+function fieldIsDatetime(column) {
+  return !_lodash2['default'].isUndefined(column.type) && column.type === 'datetime';
+}
 
 exports['default'] = adapter;
 module.exports = exports['default'];

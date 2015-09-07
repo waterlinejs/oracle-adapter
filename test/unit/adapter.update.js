@@ -33,14 +33,13 @@ describe('adapter', function() {
       it('should update the record', function(done) {
 
         adapter.update('test', 'test_update', { where: { id: 1 }}, { field_1: 'foobar' }, function(err, result) {
-          console.log('update', err, result)
-          //result[0].field_1.should.eql('foobar');
+          result[0].field_1.should.eql('foobar');
           done();
         });
 
       });
 
-      it.skip('should keep case', function(done) {
+      it('should keep case', function(done) {
 
         adapter.update('test', 'test_update', { where: { id: 1 }}, { field_1: 'FooBar' }, function(err, result) {
           result[0].field_1.should.eql('FooBar');

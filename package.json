@@ -14,13 +14,21 @@
   "author": "Ryan Quinn",
   "license": "MIT",
   "devDependencies": {
+    "captains-log": "^0.11.11",
     "mocha": "^2.2.5",
     "mocha-traceur": "^2.1.0",
-    "should": "^7.1.0"
+    "should": "^7.1.0",
+    "waterline-adapter-tests": "^0.10.14"
   },
   "dependencies": {
     "bluebird": "^2.9.34",
     "lodash": "^3.10.1",
     "waterline-sequel": "git://github.com/ryanwilliamquinn/waterline-sequel#master"
+  },
+  "waterlineAdapter": {
+    "waterlineVersion": "~0.10.0",
+    "interfaces": [
+      "semantic"
+    ]
   }
 }

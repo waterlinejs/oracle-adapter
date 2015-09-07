@@ -1,11 +1,18 @@
+'use strict';
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
+
+var _oracledb = require('oracledb');
+
+var _oracledb2 = _interopRequireDefault(_oracledb);
+
 /**
  * Utility Functions
  */
 
 // Dependencies
-'use strict';
-
 var _ = require('lodash');
+var quoteRe = /^"(.*)"$/;
 
 // Module Exports
 
@@ -70,7 +77,7 @@ utils.buildSchema = function (obj) {
 
     var type = utils.sqlTypeCast(attribute.autoIncrement ? 'NUMBER' : attribute.type);
     var nullable = attribute.notNull && 'NOT NULL';
-    var unique = attribute.unique && 'UNIQUE';
+    var unique = attribute.unique && !attribute.primaryKey && 'UNIQUE';
 
     return _.compact(['"' + name + '"', type, nullable, unique]).join(' ');
   }).join(',');
@@ -141,24 +148,27 @@ utils.mapAttributes = function (data) {
 
 utils.prepareValue = function (value) {
 
-  // Cast dates to SQL
-  if (_.isDate(value)) {
-    value = utils.toSqlDate(value);
-  }
+  if (!value) return value;
 
   // Cast functions to strings
   if (_.isFunction(value)) {
     value = value.toString();
   }
 
-  // Store Arrays as strings
-  if (Array.isArray(value)) {
-    value = JSON.stringify(value);
+  // Store Arrays and Objects as strings
+  if (Array.isArray(value) || value.constructor && value.constructor.name === 'Object') {
+    try {
+      value = JSON.stringify(value);
+    } catch (e) {
+      // just keep the value and let the db handle an error
+      value = value;
+    }
   }
 
   // Store Buffers as hex strings (for BYTEA)
   if (Buffer.isBuffer(value)) {
-    value = '\\x' + value.toString('hex');
+    //value = `X'${value.toString('hex')}'`;
+    value = value.toString('utf8');
   }
 
   return value;
@@ -219,41 +229,40 @@ utils.toSqlDate = function (date) {
 
 utils.sqlTypeCast = function (type) {
   switch (type.toLowerCase()) {
+    case 'json':
+    case 'array':
     case 'string':
     case 'text':
     case 'mediumtext':
     case 'longtext':
-      return 'varchar2(64)';
+      return 'VARCHAR2(255)';
 
     case 'boolean':
-      return 'BOOLEAN';
-
     case 'int':
     case 'integer':
     case 'number':
     case 'smallint':
     case 'bigint':
-      return 'NUMBER';
-
     case 'real':
     case 'float':
     case 'double':
     case 'decimal':
-      return 'FLOAT';
+      return 'NUMBER';
 
     // Store all time with the time zone
-    case 'time':
-      return 'TIME WITH TIME ZONE';
     // Store all dates as timestamps with the time zone
     case 'date':
-      return 'DATE';
+    case 'time':
     case 'datestamp':
     case 'datetime':
-      return 'TIMESTAMP WITH TIME ZONE';
+      return 'DATE';
+
+    case 'binary':
+      return 'VARCHAR2(3000)';
 
     default:
       console.error("Unregistered type given: " + type);
-      return "VARCHAR2(64)";
+      return "VARCHAR2(255)";
   }
 };
 
@@ -279,11 +288,10 @@ utils.getSequenceName = function (collectionName, fieldName) {
 // get all return data
 utils.getReturningData = function (definition) {
 
-  // is there an autoincrementing key?  if so, we have to add a returning parameter to grab it
-  var returningData = _.reduce(definition, function (memo, attributes, field) {
+  return _.reduce(definition, function (memo, attributes, field) {
     memo.params.push({
-      type: oracledb[utils.sqlTypeCast(attributes.type)],
-      dir: oracledb.BIND_OUT
+      type: _oracledb2['default'][utils.sqlTypeCast(attributes.type)],
+      dir: _oracledb2['default'].BIND_OUT
     });
     memo.fields.push('"' + field + '"');
     memo.outfields.push(':' + field);
@@ -295,4 +303,33 @@ utils.getReturningData = function (definition) {
     rawFields: [],
     outfields: []
   });
+};
+
+utils.transformBulkOutbinds = function (results, fields) {
+  if (_.isEmpty(results) || _.isEmpty(fields)) {
+    return;
+  }
+  var outbinds = _.cloneDeep(results);
+
+  var objs = [];
+  var length = outbinds[0].length;
+  outbinds[0].forEach(function () {
+    objs.push({});
+  });
+
+  fields = fields.map(function (field) {
+    return field.replace(quoteRe, "$1");
+  });
+
+  var _loop = function (i) {
+    var obj = objs[i];
+    outbinds.forEach(function (column, index) {
+      obj[fields[index]] = column.pop();
+    });
+  };
+
+  for (var i = 0; i < length; i++) {
+    _loop(i);
+  }
+  return objs;
 };

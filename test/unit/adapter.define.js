@@ -37,7 +37,7 @@ describe('adapter define', function() {
       type: 'string'
     },
     age: 'number'
-  };
+  }
 
   /**
    * DEFINE
@@ -64,21 +64,20 @@ describe('adapter define', function() {
 
       // notNull constraint
       it('should add a notNull constraint', function(done) {
-          support.Client(function(err, client) {
-            var query = `SELECT column_name
+        support.Client(function(err, client) {
+          var query = `SELECT column_name
                          FROM USER_TAB_COLUMNS
                          WHERE table_name = 'test_define'
                          and NULLABLE = 'N'`
 
-            client.execute(query, [], function(err, result) {
+          client.execute(query, [], function(err, result) {
+            result.rows[0].COLUMN_NAME.should.equal('name')
 
-              result.rows[0].COLUMN_NAME.should.equal('name')
+            client.release((err) => {
+              if (err) console.log('err?', err)
+            })
 
-              client.release((err) => {
-                if (err) console.log('err?', err)
-              })
-
-              done()
+            done()
           });
         });
       });
