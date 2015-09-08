@@ -73,7 +73,7 @@ var adapter = {
       collections: collections || {}
     };
 
-    // set up pool here
+    // set up connection pool
     _oracledb2['default'].createPool({
       user: connection.user,
       password: connection.password,
@@ -91,6 +91,14 @@ var adapter = {
     });
   },
 
+  /**
+   * Create a new table
+   *
+   * @param connectionName
+   * @param collectionName
+   * @param definition - the waterline schema definition for this model
+   * @param cb
+   */
   define: function define(connectionName, collectionName, definition, cb) {
     var cxn = this.connections.get(connectionName);
     var collection = cxn.collections[collectionName];
@@ -102,21 +110,20 @@ var adapter = {
     };
     queries.push(query);
 
-    // are there any fields that require auto increment?
+    // Handle auto-increment
     var autoIncrementFields = _utils2['default'].getAutoIncrementFields(definition);
+
     if (autoIncrementFields.length > 0) {
-      // create sequence and trigger queries for each one
+      // Create sequence and trigger queries for each one
       autoIncrementFields.forEach(function (field) {
         var sequenceName = _utils2['default'].getSequenceName(collectionName, field);
-        //queries.push({sql: `ALTER TABLE ${collectionName} ADD (CONSTRAINT ${collectionName}_pk PRIMARY KEY ("${field}"))`})
         queries.push({
           sql: 'CREATE SEQUENCE ' + sequenceName
         });
         var triggerSql = 'CREATE OR REPLACE TRIGGER ' + collectionName + '_' + field + '_trg\n                         BEFORE INSERT ON "' + collectionName + '"\n                         FOR EACH ROW\n                         BEGIN\n                         SELECT ' + sequenceName + '.NEXTVAL\n                         INTO :new."' + field + '" FROM dual; \n                         END;';
 
         queries.push({
-          sql: triggerSql,
-          params: []
+          sql: triggerSql
         });
       });
     }
@@ -132,16 +139,13 @@ var adapter = {
     // have to search for triggers/sequences?
     var queries = [];
     queries.push({
-      sql: 'SELECT COLUMN_NAME, DATA_TYPE, NULLABLE FROM USER_TAB_COLUMNS WHERE TABLE_NAME = \'' + collectionName + '\'',
-      params: []
+      sql: 'SELECT COLUMN_NAME, DATA_TYPE, NULLABLE FROM USER_TAB_COLUMNS WHERE TABLE_NAME = \'' + collectionName + '\''
     });
     queries.push({
-      sql: 'SELECT index_name,COLUMN_NAME FROM user_ind_columns WHERE TABLE_NAME = \'' + collectionName + '\'',
-      params: []
+      sql: 'SELECT index_name,COLUMN_NAME FROM user_ind_columns WHERE TABLE_NAME = \'' + collectionName + '\''
     });
     queries.push({
-      sql: 'SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner\n        FROM all_constraints cons, all_cons_columns cols WHERE cols.table_name = \n        :name AND cons.constraint_type = \'P\' AND cons.constraint_name = cols.constraint_name AND cons.owner = cols.owner\n        ORDER BY cols.table_name, cols.position',
-      params: [collectionName]
+      sql: 'SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner\n        FROM all_constraints cons, all_cons_columns cols WHERE cols.table_name = \n        \'' + collectionName + '\' AND cons.constraint_type = \'P\' AND cons.constraint_name = cols.constraint_name AND cons.owner = cols.owner\n        ORDER BY cols.table_name, cols.position'
     });
 
     return this.executeQuery(connectionName, queries).spread(function (schema, indices, tablePrimaryKeys) {
@@ -164,16 +168,18 @@ var adapter = {
       cxn.pool.getConnection(function (err, conn) {
 
         if (err && err.message.indexOf('ORA-24418') > -1) {
-          // retry
+          // This error means all of the connections in the pool are busy
+          // In this scenario, just keep trying until one of the connections frees up
           return resolve(_this2.executeQuery(connectionName, queries));
         }
 
         if (err) return reject(err);
+
         return _bluebird2['default'].reduce(queries, function (memo, query) {
           return new _bluebird2['default'](function (resolve, reject) {
             var options = {};
 
-            // autocommit by default
+            // Autocommit by default
             if (query.autoCommit !== false) {
               options.autoCommit = true;
             }
@@ -181,9 +187,10 @@ var adapter = {
             if (query.outFormat !== undefined) {
               options.outFormat = query.outFormat;
             }
-            //console.log('executing', query.sql, query.params)
+
+            // console.log('executing', query.sql, query.params)
             conn.execute(query.sql, query.params || [], options, function (queryError, res) {
-              //console.log('query result', queryError, res)
+              // console.log('query result', queryError, res)
               if (queryError) return reject(queryError);
               memo.push(res);
               resolve(memo);
@@ -191,12 +198,12 @@ var adapter = {
           });
         }, []).then(function (result) {
           conn.release(function (err) {
-            if (err) console.log('problem releasing connection', err);
+            if (err) console.log('Problem releasing connection', err);
             resolve(_this2.handleResults(result));
           });
         })['catch'](function (err) {
           conn.release(function (error) {
-            if (error) console.log('problem releasing connection', error);
+            if (error) console.log('Problem releasing connection', error);
             reject(err);
           });
         });
@@ -246,55 +253,24 @@ var adapter = {
     var definition = collection.definition;
     _lodash2['default'].each(definition, function (column, name) {
 
-      /*
-      if (fieldIsDatetime(column)) {
-        data[name] = _.isUndefined(data[name]) ? 'null' : utils.dateField(data[name]);
-      } else */
       if (fieldIsBoolean(column)) {
         // no boolean type in oracle, so save it as a number
         data[name] = data[name] ? 1 : 0;
       }
     });
 
-    /*
-          // Mixin WL Next connection overrides to sqlOptions
-          var overrides = connectionOverrides[connectionName] || {};
-          var options = _.cloneDeep(sqlOptions);
-          if (hop(overrides, 'wlNext')) {
-            options.wlNext = overrides.wlNext;
-          }
-    */
-
     var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
 
     var incrementSequences = [];
     var query = undefined;
 
-    // Build a query for the specific query strategy
     try {
       query = sequel.create(table, data);
     } catch (e) {
       return cb(e);
     }
 
-    // is there an autoincrementing key?  if so, we have to add a returning parameter to grab it
-    var returningData = _lodash2['default'].reduce(collection.definition, function (memo, attributes, field) {
-      if (attributes.autoIncrement === true) {
-        memo.params.push({
-          type: _oracledb2['default'][_utils2['default'].sqlTypeCast(attributes.type)],
-          dir: _oracledb2['default'].BIND_OUT
-        });
-        memo.fields.push('"' + field + '"');
-        memo.outfields.push(':' + field);
-        memo.rawFields.push(field);
-      }
-      return memo;
-    }, {
-      params: [],
-      fields: [],
-      rawFields: [],
-      outfields: []
-    });
+    var returningData = _utils2['default'].getReturningData(collection.definition);
 
     var queryObj = {};
 
@@ -307,12 +283,10 @@ var adapter = {
     queryObj.sql = query.query;
     queryObj.params = query.values;
 
-    this.executeQuery(connectionName, queryObj).then(function (result) {
-      // join the returning fields with the out params
-      returningData.rawFields.forEach(function (field, index) {
-        data[field] = result.outBinds[index][0];
-      });
-      cb(null, data);
+    this.executeQuery(connectionName, queryObj).then(function (_ref) {
+      var outBinds = _ref.outBinds;
+
+      cb(null, _utils2['default'].transformBulkOutbinds(outBinds, returningData.fields)[0]);
     })['catch'](function (err) {
       cb(err);
     });
@@ -445,8 +419,10 @@ var adapter = {
     queryObj.params = query.values;
 
     // Run query
-    this.executeQuery(connectionName, queryObj).then(function (result) {
-      cb(null, _utils2['default'].transformBulkOutbinds(result.outBinds, returningData.fields));
+    this.executeQuery(connectionName, queryObj).then(function (_ref2) {
+      var outBinds = _ref2.outBinds;
+
+      cb(null, _utils2['default'].transformBulkOutbinds(outBinds, returningData.fields));
     })['catch'](function (err) {
       console.log('err', err);
       cb(err);
@@ -456,10 +432,6 @@ var adapter = {
 
 function fieldIsBoolean(column) {
   return !_lodash2['default'].isUndefined(column.type) && column.type === 'boolean';
-}
-
-function fieldIsDatetime(column) {
-  return !_lodash2['default'].isUndefined(column.type) && column.type === 'datetime';
 }
 
 exports['default'] = adapter;
