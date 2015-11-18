@@ -70,7 +70,8 @@ var adapter = {
 
     var cxn = {
       identity: connection.identity,
-      collections: collections || {}
+      collections: collections || {},
+      schema: adapter.buildSchema(connection, collections)
     };
 
     // set up connection pool
@@ -89,6 +90,22 @@ var adapter = {
       _this.connections.set(cxn.identity, cxn);
       cb();
     });
+  },
+
+  /**
+   * Construct the waterline schema for the given connection.
+   *
+   * @param connection
+   * @param collections[]
+   */
+  buildSchema: function buildSchema(connection, collections) {
+    return _lodash2['default'].chain(collections).map(function (model, modelName) {
+      var definition = _lodash2['default'].get(model, ['waterline', 'schema', model.identity]);
+      return _lodash2['default'].defaults(definition, {
+        attributes: {},
+        tableName: modelName
+      });
+    }).indexBy('tableName').value();
   },
 
   /**
@@ -120,7 +137,7 @@ var adapter = {
         queries.push({
           sql: 'CREATE SEQUENCE ' + sequenceName
         });
-        var triggerSql = 'CREATE OR REPLACE TRIGGER ' + collectionName + '_' + field + '_trg\n                         BEFORE INSERT ON "' + collectionName + '"\n                         FOR EACH ROW\n                         BEGIN\n                         SELECT ' + sequenceName + '.NEXTVAL\n                         INTO :new."' + field + '" FROM dual; \n                         END;';
+        var triggerSql = 'CREATE OR REPLACE TRIGGER ' + collectionName + '_' + field + '_trg\n                         BEFORE INSERT ON "' + collectionName + '"\n                         FOR EACH ROW\n                         BEGIN\n                         SELECT ' + sequenceName + '.NEXTVAL\n                         INTO :new."' + field + '" FROM dual;\n                         END;';
 
         queries.push({
           sql: triggerSql
@@ -145,7 +162,7 @@ var adapter = {
       sql: 'SELECT index_name,COLUMN_NAME FROM user_ind_columns WHERE TABLE_NAME = \'' + collectionName + '\''
     });
     queries.push({
-      sql: 'SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner\n        FROM all_constraints cons, all_cons_columns cols WHERE cols.table_name = \n        \'' + collectionName + '\' AND cons.constraint_type = \'P\' AND cons.constraint_name = cols.constraint_name AND cons.owner = cols.owner\n        ORDER BY cols.table_name, cols.position'
+      sql: 'SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner\n        FROM all_constraints cons, all_cons_columns cols WHERE cols.table_name =\n        \'' + collectionName + '\' AND cons.constraint_type = \'P\' AND cons.constraint_name = cols.constraint_name AND cons.owner = cols.owner\n        ORDER BY cols.table_name, cols.position'
     });
 
     return this.executeQuery(connectionName, queries).spread(function (schema, indices, tablePrimaryKeys) {
@@ -296,8 +313,7 @@ var adapter = {
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[collectionName];
 
-    var schema = collection.waterline.schema;
-    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
+    var sequel = new _waterlineSequel2['default'](connectionObject.schema, this.sqlOptions);
     var query = undefined;
     var limit = options.limit || null;
     var skip = options.skip || null;
@@ -335,9 +351,8 @@ var adapter = {
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[collectionName];
 
-    var schema = collection.waterline.schema;
     var query = undefined;
-    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
+    var sequel = new _waterlineSequel2['default'](connectionObject.schema, this.sqlOptions);
 
     try {
       query = sequel.destroy(collectionName, options);
@@ -350,7 +365,7 @@ var adapter = {
         sql: query.query,
         params: query.values
       }).then(function (delRes) {
-        // verify delete?    
+        // verify delete?
         cb(null, findResult);
       })['catch'](function (delErr) {
         cb(delErr);
@@ -396,8 +411,7 @@ var adapter = {
     var collection = connectionObject.collections[collectionName];
 
     // Build find query
-    var schema = collection.waterline.schema;
-    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
+    var sequel = new _waterlineSequel2['default'](connectionObject.schema, this.sqlOptions);
 
     var query = undefined;
     // Build query

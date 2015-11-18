@@ -4,7 +4,8 @@
   "description": "sails oracle adapter",
   "main": "dist/adapter",
   "scripts": {
-    "test": "mocha --compilers js:mocha-traceur test/*",
+    "test": "mocha --compilers js:mocha-traceur test/unit",
+    "test-integration": "node test/integration/runner.js",
     "babel": "babel lib --out-dir dist"
   },
   "keywords": [
