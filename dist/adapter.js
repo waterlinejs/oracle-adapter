@@ -145,6 +145,14 @@ var adapter = {
       });
     }
 
+    if (!_lodash2['default'].isEmpty(collection.triggers)) {
+      collection.triggers.forEach(function (trigger) {
+        queries.push({
+          sql: trigger
+        });
+      });
+    }
+
     // need to create sequence and trigger for auto increment
     this.executeQuery(connectionName, queries).nodeify(cb);
   },
