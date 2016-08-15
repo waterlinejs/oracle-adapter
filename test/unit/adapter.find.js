@@ -85,5 +85,24 @@ describe('adapter', function() {
 
     });
 
+    describe('it should handle arbitrary numbers of rows', function() {
+
+      it('should find many rows', function(done)  {
+        this.timeout(10000)
+        support.SeedMultipleRows('test_find', 150, function() {
+          console.log('seeded rows');
+          adapter.find('test', 'test_find', {}, (err, results) => {
+            if (err) return done(err)
+            results.length.should.be.aboveOrEqual(150)
+            done()
+          })
+        })
+      })
+
+
+
+    });
+
+
   });
 });

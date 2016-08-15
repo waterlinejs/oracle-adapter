@@ -74,16 +74,28 @@ var adapter = {
       schema: adapter.buildSchema(connection, collections)
     };
 
+    // set up some default values based on defaults for node-oracledb client
+    var poolMin = connection.poolMin >= 0 ? connection.poolMin : 1;
+    var poolMax = connection.poolMax > 0 ? connection.poolMax : 4;
+    var poolIncrement = connection.poolIncrement > 0 ? connection.poolIncrement : 1;
+    var poolTimeout = connection.poolTimeout >= 0 ? connection.poolTimeout : 1;
+    var stmtCacheSize = connection.stmtCacheSize >= 0 ? connection.stmtCacheSize : 30;
+    var prefetchRows = connection.prefetchRows >= 0 ? connection.prefetchRows : 100;
+
+    if (connection.maxRows > 0) {
+      _oracledb2['default'].maxRows = connection.maxRows;
+    }
+
     // set up connection pool
     _oracledb2['default'].createPool({
       user: connection.user,
       password: connection.password,
       connectString: connection.connectString,
-      poolMin: 1,
-      poolMax: 5,
-      poolIncrement: 1,
-      poolTimeout: 10,
-      stmtCacheSize: 10
+      poolMin: poolMin,
+      poolMax: poolMax,
+      poolIncrement: poolIncrement,
+      poolTimeout: poolTimeout,
+      stmtCacheSize: stmtCacheSize
     }, function (err, pool) {
       if (err) return cb(err);
       cxn.pool = pool;
@@ -105,7 +117,7 @@ var adapter = {
         attributes: {},
         tableName: modelName
       });
-    }).indexBy('tableName').value();
+    }).keyBy('tableName').value();
   },
 
   /**
@@ -146,7 +158,7 @@ var adapter = {
     }
 
     // need to create sequence and trigger for auto increment
-    this.executeQuery(connectionName, queries).nodeify(cb);
+    this.executeQuery(connectionName, queries).asCallback(cb);
   },
 
   describe: function describe(connectionName, collectionName, cb) {
@@ -402,7 +414,7 @@ var adapter = {
       return memo;
     }, []);
 
-    return this.executeQuery(connectionName, queries).nodeify(cb);
+    return _bluebird2['default'].resolve(this.executeQuery(connectionName, queries)).asCallback(cb);
   },
 
   update: function update(connectionName, collectionName, options, values, cb, connection) {
