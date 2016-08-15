@@ -2,7 +2,7 @@ var adapter = require('../../dist/adapter'),
   should = require('should'),
   support = require('./support/bootstrap');
 
-describe('adapter', function() {
+describe('destroy adapter', function() {
 
   /**
    * Setup and Teardown
@@ -31,6 +31,7 @@ describe('adapter', function() {
       });
 
       it('should destroy the record', function(done) {
+
         adapter.destroy('test', 'test_destroy', {
           where: {
             id: 1
@@ -46,7 +47,7 @@ describe('adapter', function() {
 
               // close client
               client.release((err) => {
-                if (err) console.log('problem releasign connection', err)
+                if (err) console.log('problem releasing connection', err)
               })
 
               done();

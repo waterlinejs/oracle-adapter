@@ -29,7 +29,7 @@ Support.Config = {
   queueTimeout: 60000,
   poolMax: 50,
   poolMin: 2,
-  enableStats: true
+  enableStats: process.env.ENABLE_STATS
 };
 
 // Fixture Collection Def

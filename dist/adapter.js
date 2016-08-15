@@ -388,17 +388,14 @@ var adapter = {
       return cb(e);
     }
 
-    this.find(connectionName, collectionName, options, function (err, findResult) {
-      return _this4.executeQuery(connectionName, {
+    var handler = function handler(err, findResult) {
+      return _bluebird2['default'].resolve(_this4.executeQuery(connectionName, {
         sql: query.query,
         params: query.values
-      }).then(function (delRes) {
-        // verify delete?
-        cb(null, findResult);
-      })['catch'](function (delErr) {
-        cb(delErr);
-      });
-    }, connection);
+      })).asCallback(cb);
+    };
+
+    return this.find(connectionName, collectionName, options, handler, connection);
   },
 
   drop: function drop(connectionName, collectionName, relations, cb, connection) {
@@ -461,7 +458,7 @@ var adapter = {
     queryObj.params = query.values;
 
     // Run query
-    this.executeQuery(connectionName, queryObj).then(function (_ref2) {
+    return this.executeQuery(connectionName, queryObj).then(function (_ref2) {
       var outBinds = _ref2.outBinds;
 
       cb(null, _utils2['default'].transformBulkOutbinds(outBinds, returningData.fields));
