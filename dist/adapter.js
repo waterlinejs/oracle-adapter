@@ -14,9 +14,9 @@ var _utils = require('./utils');
 
 var _utils2 = _interopRequireDefault(_utils);
 
-var _bluebird = require('bluebird');
+var _async = require('async');
 
-var _bluebird2 = _interopRequireDefault(_bluebird);
+var _async2 = _interopRequireDefault(_async);
 
 var _waterlineSequel = require('waterline-sequel');
 
@@ -165,7 +165,7 @@ var adapter = {
     }
 
     // need to create sequence and trigger for auto increment
-    return _bluebird2['default'].resolve(this.executeQuery(connectionName, queries)).asCallback(cb);
+    return this.executeQuery(connectionName, queries, cb);
   },
 
   describe: function describe(connectionName, collectionName, cb) {
@@ -184,67 +184,63 @@ var adapter = {
       sql: 'SELECT cols.table_name, cols.column_name, cols.position, cons.status, cons.owner\n        FROM all_constraints cons, all_cons_columns cols WHERE cols.table_name =\n        \'' + collectionName + '\' AND cons.constraint_type = \'P\' AND cons.constraint_name = cols.constraint_name AND cons.owner = cols.owner\n        ORDER BY cols.table_name, cols.position'
     });
 
-    return this.executeQuery(connectionName, queries).spread(function (schema, indices, tablePrimaryKeys) {
+    this.executeQuery(connectionName, queries, function (err, results) {
+      var schema = results[0];
+      var indices = results[1];
+      var tablePrimaryKeys = results[2];
       var normalized = _utils2['default'].normalizeSchema(schema, collection.definition);
       if (_lodash2['default'].isEmpty(normalized)) {
         return cb();
       }
       cb(null, normalized);
-    })['catch'](cb);
+    });
   },
 
-  executeQuery: function executeQuery(connectionName, queries) {
+  executeQuery: function executeQuery(connectionName, queries, cb) {
     var _this2 = this;
 
-    return new _bluebird2['default'](function (resolve, reject) {
-      if (!_lodash2['default'].isArray(queries)) {
-        queries = [queries];
-      }
-      var cxn = _this2.connections.get(connectionName);
-      if (cxn.pool._enableStats) {
-        console.log(cxn.pool._logStats());
-      }
-      cxn.pool.getConnection(function (err, conn) {
+    if (!_lodash2['default'].isArray(queries)) {
+      queries = [queries];
+    }
+    var cxn = this.connections.get(connectionName);
+    if (cxn.pool._enableStats) {
+      console.log(cxn.pool._logStats());
+    }
+    cxn.pool.getConnection(function (err, conn) {
 
-        if (err && err.message.indexOf('ORA-24418') > -1) {
-          // This error means all of the connections in the pool are busy
-          // In this scenario, just keep trying until one of the connections frees up
-          return resolve(_this2.executeQuery(connectionName, queries));
+      if (err && err.message.indexOf('ORA-24418') > -1) {
+        // In this scenario, just keep trying until one of the connections frees up
+        return setTimeout(_this2.executeQuery(connectionName, queries, cb).bind(_this2), 50);
+      }
+
+      if (err) return cb(err);
+
+      _async2['default'].reduce(queries, [], function (memo, query, asyncCallback) {
+        var options = {};
+
+        // Autocommit by default
+        if (query.autoCommit !== false) {
+          options.autoCommit = true;
         }
 
-        if (err) return reject(err);
+        if (query.outFormat !== undefined) {
+          options.outFormat = query.outFormat;
+        }
 
-        return _bluebird2['default'].reduce(queries, function (memo, query) {
-          return new _bluebird2['default'](function (resolve, reject) {
-            var options = {};
-
-            // Autocommit by default
-            if (query.autoCommit !== false) {
-              options.autoCommit = true;
-            }
-
-            if (query.outFormat !== undefined) {
-              options.outFormat = query.outFormat;
-            }
-
-            // console.log('executing', query.sql, query.params)
-            conn.execute(query.sql, query.params || [], options, function (queryError, res) {
-              // console.log('query result', queryError, res)
-              if (queryError) return reject(queryError);
-              memo.push(res);
-              resolve(memo);
-            });
-          });
-        }, []).then(function (result) {
-          conn.release(function (err) {
-            if (err) console.log('Problem releasing connection', err);
-            resolve(_this2.handleResults(result));
-          });
-        })['catch'](function (err) {
-          conn.release(function (error) {
-            if (error) console.log('Problem releasing connection', error);
-            reject(err);
-          });
+        //console.log('executing', query.sql, query.params)
+        conn.execute(query.sql, query.params || [], options, function (queryError, res) {
+          if (queryError) return asyncCallback(queryError);
+          memo.push(res);
+          asyncCallback(null, memo);
+        });
+      }, function (asyncErr, result) {
+        conn.release(function (error) {
+          if (error) console.log('Problem releasing connection', error);
+          if (asyncErr) {
+            cb(asyncErr);
+          } else {
+            cb(null, _this2.handleResults(result));
+          }
         });
       });
     });
@@ -328,12 +324,9 @@ var adapter = {
     queryObj.sql = query.query;
     queryObj.params = query.values;
 
-    this.executeQuery(connectionName, queryObj).then(function (_ref) {
-      var outBinds = _ref.outBinds;
-
-      cb(null, _utils2['default'].transformBulkOutbinds(outBinds, returningData.fields)[0]);
-    })['catch'](function (err) {
-      cb(err);
+    this.executeQuery(connectionName, queryObj, function (err, results) {
+      if (err) return cb(err);
+      cb(null, _utils2['default'].transformBulkOutbinds(results.outBinds, returningData.fields)[0]);
     });
   },
 
@@ -368,9 +361,10 @@ var adapter = {
     this.executeQuery(connectionName, {
       sql: findQuery,
       params: query.values[0]
-    }).then(function (results) {
+    }, function (err, results) {
+      if (err) return cb(err);
       cb(null, results && results.rows);
-    })['catch'](cb);
+    });
   },
 
   destroy: function destroy(connectionName, collectionName, options, cb, connection) {
@@ -389,10 +383,15 @@ var adapter = {
     }
 
     var handler = function handler(err, findResult) {
-      return _bluebird2['default'].resolve(_this4.executeQuery(connectionName, {
+      if (err) return cb(err);
+      _this4.executeQuery(connectionName, {
         sql: query.query,
         params: query.values
-      })).asCallback(cb);
+      }, function (delErr, delResult) {
+        // TODO: verify delResult?
+        if (delErr) return cb(delErr);
+        cb(null, findResult);
+      });
     };
 
     return this.find(connectionName, collectionName, options, handler, connection);
@@ -427,7 +426,7 @@ var adapter = {
       return memo;
     }, []);
 
-    return _bluebird2['default'].resolve(this.executeQuery(connectionName, queries)).asCallback(cb);
+    return this.executeQuery(connectionName, queries, cb);
   },
 
   update: function update(connectionName, collectionName, options, values, cb, connection) {
@@ -458,12 +457,9 @@ var adapter = {
     queryObj.params = query.values;
 
     // Run query
-    return this.executeQuery(connectionName, queryObj).then(function (_ref2) {
-      var outBinds = _ref2.outBinds;
-
-      cb(null, _utils2['default'].transformBulkOutbinds(outBinds, returningData.fields));
-    })['catch'](function (err) {
-      cb(err);
+    return this.executeQuery(connectionName, queryObj, function (err, results) {
+      if (err) return cb(err);
+      cb(null, _utils2['default'].transformBulkOutbinds(results.outBinds, returningData.fields));
     });
   }
 };
