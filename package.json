@@ -5,6 +5,7 @@
   "main": "dist/adapter",
   "scripts": {
     "test": "mocha --compilers js:mocha-traceur test/unit",
+    "test-debug": "mocha --compilers js:mocha-traceur debug test/unit",
     "test-integration": "node test/integration/runner.js",
     "babel": "babel lib --out-dir dist"
   },

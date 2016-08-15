@@ -25,7 +25,11 @@ Support.Config = {
   connectString: process.env.DB_CONNECT_STRING,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
-  maxRows: 500
+  maxRows: 500000,
+  queueTimeout: 60000,
+  poolMax: 50,
+  poolMin: 2,
+  enableStats: true
 };
 
 // Fixture Collection Def

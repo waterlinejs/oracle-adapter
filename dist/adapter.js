@@ -81,13 +81,17 @@ var adapter = {
     var poolTimeout = connection.poolTimeout >= 0 ? connection.poolTimeout : 1;
     var stmtCacheSize = connection.stmtCacheSize >= 0 ? connection.stmtCacheSize : 30;
     var prefetchRows = connection.prefetchRows >= 0 ? connection.prefetchRows : 100;
+    var enableStats = connection.enableStats ? true : false;
 
     if (connection.maxRows > 0) {
       _oracledb2['default'].maxRows = connection.maxRows;
     }
+    if (connection.queueTimeout >= 0) {
+      _oracledb2['default'].queueTimeout = connection.queueTimeout;
+    }
 
-    // set up connection pool
-    _oracledb2['default'].createPool({
+    var poolconfig = {
+      _enableStats: enableStats,
       user: connection.user,
       password: connection.password,
       connectString: connection.connectString,
@@ -96,7 +100,10 @@ var adapter = {
       poolIncrement: poolIncrement,
       poolTimeout: poolTimeout,
       stmtCacheSize: stmtCacheSize
-    }, function (err, pool) {
+    };
+
+    // set up connection pool
+    _oracledb2['default'].createPool(poolconfig, function (err, pool) {
       if (err) return cb(err);
       cxn.pool = pool;
       _this.connections.set(cxn.identity, cxn);
@@ -158,7 +165,7 @@ var adapter = {
     }
 
     // need to create sequence and trigger for auto increment
-    this.executeQuery(connectionName, queries).asCallback(cb);
+    return _bluebird2['default'].resolve(this.executeQuery(connectionName, queries)).asCallback(cb);
   },
 
   describe: function describe(connectionName, collectionName, cb) {
@@ -194,6 +201,9 @@ var adapter = {
         queries = [queries];
       }
       var cxn = _this2.connections.get(connectionName);
+      if (cxn.pool._enableStats) {
+        console.log(cxn.pool._logStats());
+      }
       cxn.pool.getConnection(function (err, conn) {
 
         if (err && err.message.indexOf('ORA-24418') > -1) {
@@ -245,6 +255,8 @@ var adapter = {
   },
 
   teardown: function teardown(conn, cb) {
+    var _this3 = this;
+
     if (typeof conn == 'function') {
       cb = conn;
       conn = null;
@@ -254,8 +266,12 @@ var adapter = {
       return cb();
     }
     if (!this.connections.has(conn)) return cb();
-    this.connections['delete'](conn);
-    cb();
+
+    var cxn = this.connections.get(conn);
+    cxn.pool.close().then(function () {
+      _this3.connections['delete'](conn);
+      cb();
+    })['catch'](cb);
   },
 
   createEach: function createEach(connectionName, table, records, cb) {
@@ -358,7 +374,7 @@ var adapter = {
   },
 
   destroy: function destroy(connectionName, collectionName, options, cb, connection) {
-    var _this3 = this;
+    var _this4 = this;
 
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[collectionName];
@@ -373,7 +389,7 @@ var adapter = {
     }
 
     this.find(connectionName, collectionName, options, function (err, findResult) {
-      _this3.executeQuery(connectionName, {
+      return _this4.executeQuery(connectionName, {
         sql: query.query,
         params: query.values
       }).then(function (delRes) {
@@ -386,7 +402,7 @@ var adapter = {
   },
 
   drop: function drop(connectionName, collectionName, relations, cb, connection) {
-    var _this4 = this;
+    var _this5 = this;
 
     if (typeof relations == 'function') {
       cb = relations;
@@ -399,7 +415,7 @@ var adapter = {
       memo.push({
         sql: 'DROP TABLE "' + tableName + '"'
       });
-      var connectionObject = _this4.connections.get(connectionName);
+      var connectionObject = _this5.connections.get(connectionName);
       var collection = connectionObject.collections[tableName];
 
       var autoIncrementFields = _utils2['default'].getAutoIncrementFields(collection.definition);
@@ -450,7 +466,6 @@ var adapter = {
 
       cb(null, _utils2['default'].transformBulkOutbinds(outBinds, returningData.fields));
     })['catch'](function (err) {
-      console.log('err', err);
       cb(err);
     });
   }
