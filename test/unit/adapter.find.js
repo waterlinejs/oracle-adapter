@@ -1,6 +1,7 @@
 var adapter = require('../../dist/adapter'),
     should = require('should'),
-    support = require('./support/bootstrap');
+    support = require('./support/bootstrap'),
+    BPromise = require('bluebird');
 
 describe('adapter', function() {
 
@@ -85,5 +86,90 @@ describe('adapter', function() {
 
     });
 
+    describe('it should handle arbitrary numbers of rows', function() {
+
+      it('should find many rows', function(done)  {
+        this.timeout(10000)
+        support.SeedMultipleRows('test_find', 150, function() {
+          adapter.find('test', 'test_find', {}, (err, results) => {
+            if (err) return done(err)
+            results.length.should.be.aboveOrEqual(150)
+            done()
+          })
+        })
+      })
+
+
+
+    });
+
+
+  });
+
+  describe.skip('it should handle concurrency without timing out', function() {
+    this.timeout(90000)
+
+    before(function(done) {
+      support.SeedMultipleRows('test_find', 15000, () => {
+        done()
+      })
+    });
+
+    it('should try to open a few connection simultaneously', function() {
+        var find = BPromise.promisify(adapter.find, { context: adapter })
+        return Promise.all([
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } }),
+            find('test', 'test_find', { where: { "field_1": 'foo' } })
+              ]
+        )
+        .then(res => {
+          res[0].length.should.be.aboveOrEqual(15000);
+        })
+    })
   });
 });

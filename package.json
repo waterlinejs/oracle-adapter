@@ -5,6 +5,7 @@
   "main": "dist/adapter",
   "scripts": {
     "test": "mocha --compilers js:mocha-traceur test/unit",
+    "test-debug": "mocha --compilers js:mocha-traceur debug test/unit",
     "test-integration": "node test/integration/runner.js",
     "babel": "babel lib --out-dir dist"
   },
@@ -15,16 +16,18 @@
   "author": "Ryan Quinn",
   "license": "MIT",
   "devDependencies": {
+    "bluebird": "^3.4.1",
     "captains-log": "0.11.x",
-    "mocha": "2.2.x",
+    "mocha": "^3.0.2",
     "mocha-traceur": "2.1.x",
-    "should": "7.1.x",
+    "should": "^11.1.0",
+    "traceur": "0.0.111",
     "waterline-adapter-tests": "0.10.x"
   },
   "dependencies": {
-    "bluebird": "2.9.x",
-    "lodash": "3.10.x",
-    "oracledb": "^1.1.0",
+    "async": "^2.0.1",
+    "lodash": "^4.15.0",
+    "oracledb": "^1.10.1",
     "waterline-sequel": "git://github.com/ryanwilliamquinn/waterline-sequel#master"
   },
   "waterlineAdapter": {

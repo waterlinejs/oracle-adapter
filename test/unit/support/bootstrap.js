@@ -4,6 +4,7 @@
 
 var oracle = require('oracledb'),
   _ = require('lodash'),
+  BPromise = require('bluebird'),
   adapter = require('../../../dist/adapter');
 
 var Support = module.exports = {};
@@ -21,9 +22,14 @@ Support.SqlOptions = {
 */
 
 Support.Config = {
-  connectString: process.env.DB_CONNECT_STRING || '192.168.220.128/xe',
-  user: process.env.DB_USER || 'ORACLEUSER',
-  password: process.env.DB_PASS || 'l8ter',
+  connectString: process.env.DB_CONNECT_STRING,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  maxRows: 500000,
+  queueTimeout: 60000,
+  poolMax: 50,
+  poolMin: 2,
+  enableStats: process.env.ENABLE_STATS
 };
 
 // Fixture Collection Def
@@ -124,7 +130,7 @@ Support.Client = function(cb) {
 Support.Seed = function(tableName, cb) {
   oracle.getConnection(Support.Config, function(err, client) {
     createRecord(tableName, client, function(err) {
-      
+
       client.release((err) => {
         if (err) console.log('error releasing connection', err)
       })
@@ -137,6 +143,23 @@ Support.Seed = function(tableName, cb) {
     });
   });
 };
+
+Support.SeedMultipleRows = function(tableName, numRows, cb) {
+  var createRecordPromise = BPromise.promisify(createRecord)
+  var proms = []
+  oracle.getConnection(Support.Config, function(err, client) {
+
+    for (var i=0; i<numRows; i++) {
+      proms.push(createRecordPromise(tableName, client))
+    }
+
+    return Promise.all(proms)
+      .then(() => {
+        cb()
+      }).catch(cb)
+  })
+
+}
 
 
 function dropTable(table, client, cb) {
