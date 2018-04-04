@@ -1,10 +1,10 @@
 'use strict';
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
-
 var _oracledb = require('oracledb');
 
 var _oracledb2 = _interopRequireDefault(_oracledb);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
  * Utility Functions
@@ -267,7 +267,7 @@ utils.sqlTypeCast = function (type) {
 };
 
 utils.alterParameterSymbol = function (query) {
-  var symbol = arguments.length <= 1 || arguments[1] === undefined ? ':' : arguments[1];
+  var symbol = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : ':';
 
   var re = /\$/g;
   return query.replace(re, symbol);
@@ -290,8 +290,8 @@ utils.getReturningData = function (definition) {
 
   return _.reduce(definition, function (memo, attributes, field) {
     memo.params.push({
-      type: _oracledb2['default'][utils.sqlTypeCast(attributes.type)],
-      dir: _oracledb2['default'].BIND_OUT
+      type: _oracledb2.default[utils.sqlTypeCast(attributes.type)],
+      dir: _oracledb2.default.BIND_OUT
     });
     memo.fields.push('"' + field + '"');
     memo.outfields.push(':' + field);
@@ -321,7 +321,7 @@ utils.transformBulkOutbinds = function (results, fields) {
     return field.replace(quoteRe, "$1");
   });
 
-  var _loop = function (i) {
+  var _loop = function _loop(i) {
     var obj = objs[i];
     outbinds.forEach(function (column, index) {
       obj[fields[index]] = column.pop();

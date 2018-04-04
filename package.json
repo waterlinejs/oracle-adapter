@@ -28,7 +28,7 @@
     "async": "^2.0.1",
     "lodash": "^4.15.0",
     "oracledb": "^1.10.1",
-    "waterline-sequel": "git://github.com/ryanwilliamquinn/waterline-sequel#master"
+    "waterline-sequel": "git+https://github.com/ryanwilliamquinn/waterline-sequel.git"
   },
   "waterlineAdapter": {
     "waterlineVersion": "0.10.x",

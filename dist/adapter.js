@@ -1,10 +1,8 @@
 'use strict';
 
-Object.defineProperty(exports, '__esModule', {
+Object.defineProperty(exports, "__esModule", {
   value: true
 });
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
 var _oracledb = require('oracledb');
 
@@ -26,9 +24,11 @@ var _lodash = require('lodash');
 
 var _lodash2 = _interopRequireDefault(_lodash);
 
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
 var createcount = 0;
 
-_oracledb2['default'].outFormat = _oracledb2['default'].OBJECT;
+_oracledb2.default.outFormat = _oracledb2.default.OBJECT;
 
 var adapter = {
 
@@ -72,10 +72,9 @@ var adapter = {
       identity: connection.identity,
       collections: collections || {},
       schema: adapter.buildSchema(connection, collections)
-    };
 
-    // set up some default values based on defaults for node-oracledb client
-    var poolMin = connection.poolMin >= 0 ? connection.poolMin : 1;
+      // set up some default values based on defaults for node-oracledb client
+    };var poolMin = connection.poolMin >= 0 ? connection.poolMin : 1;
     var poolMax = connection.poolMax > 0 ? connection.poolMax : 4;
     var poolIncrement = connection.poolIncrement > 0 ? connection.poolIncrement : 1;
     var poolTimeout = connection.poolTimeout >= 0 ? connection.poolTimeout : 1;
@@ -84,10 +83,10 @@ var adapter = {
     var enableStats = connection.enableStats ? true : false;
 
     if (connection.maxRows > 0) {
-      _oracledb2['default'].maxRows = connection.maxRows;
+      _oracledb2.default.maxRows = connection.maxRows;
     }
     if (connection.queueTimeout >= 0) {
-      _oracledb2['default'].queueTimeout = connection.queueTimeout;
+      _oracledb2.default.queueTimeout = connection.queueTimeout;
     }
 
     var poolconfig = {
@@ -100,16 +99,16 @@ var adapter = {
       poolIncrement: poolIncrement,
       poolTimeout: poolTimeout,
       stmtCacheSize: stmtCacheSize
-    };
 
-    // set up connection pool
-    _oracledb2['default'].createPool(poolconfig, function (err, pool) {
+      // set up connection pool
+    };_oracledb2.default.createPool(poolconfig, function (err, pool) {
       if (err) return cb(err);
       cxn.pool = pool;
       _this.connections.set(cxn.identity, cxn);
       cb();
     });
   },
+
 
   /**
    * Construct the waterline schema for the given connection.
@@ -118,14 +117,15 @@ var adapter = {
    * @param collections[]
    */
   buildSchema: function buildSchema(connection, collections) {
-    return _lodash2['default'].chain(collections).map(function (model, modelName) {
-      var definition = _lodash2['default'].get(model, ['waterline', 'schema', model.identity]);
-      return _lodash2['default'].defaults(definition, {
+    return _lodash2.default.chain(collections).map(function (model, modelName) {
+      var definition = _lodash2.default.get(model, ['waterline', 'schema', model.identity]);
+      return _lodash2.default.defaults(definition, {
         attributes: {},
         tableName: modelName
       });
     }).keyBy('tableName').value();
   },
+
 
   /**
    * Create a new table
@@ -142,17 +142,17 @@ var adapter = {
 
     var queries = [];
     var query = {
-      sql: 'CREATE TABLE "' + collectionName + '" (' + _utils2['default'].buildSchema(definition) + ')'
+      sql: 'CREATE TABLE "' + collectionName + '" (' + _utils2.default.buildSchema(definition) + ')'
     };
     queries.push(query);
 
     // Handle auto-increment
-    var autoIncrementFields = _utils2['default'].getAutoIncrementFields(definition);
+    var autoIncrementFields = _utils2.default.getAutoIncrementFields(definition);
 
     if (autoIncrementFields.length > 0) {
       // Create sequence and trigger queries for each one
       autoIncrementFields.forEach(function (field) {
-        var sequenceName = _utils2['default'].getSequenceName(collectionName, field);
+        var sequenceName = _utils2.default.getSequenceName(collectionName, field);
         queries.push({
           sql: 'CREATE SEQUENCE ' + sequenceName
         });
@@ -166,6 +166,20 @@ var adapter = {
 
     // need to create sequence and trigger for auto increment
     return this.executeQuery(connectionName, queries, cb);
+  },
+
+
+  query: function query(connectionName, collectionName, _query, cb) {
+    var queries = [{
+      sql: _query
+    }];
+
+    this.executeQuery(connectionName, queries, function (err, results) {
+      if (err) {
+        return cb(err);
+      }
+      cb(null, results);
+    });
   },
 
   describe: function describe(connectionName, collectionName, cb) {
@@ -188,18 +202,17 @@ var adapter = {
       var schema = results[0];
       var indices = results[1];
       var tablePrimaryKeys = results[2];
-      var normalized = _utils2['default'].normalizeSchema(schema, collection.definition);
-      if (_lodash2['default'].isEmpty(normalized)) {
+      var normalized = _utils2.default.normalizeSchema(schema, collection.definition);
+      if (_lodash2.default.isEmpty(normalized)) {
         return cb();
       }
       cb(null, normalized);
     });
   },
-
   executeQuery: function executeQuery(connectionName, queries, cb) {
     var _this2 = this;
 
-    if (!_lodash2['default'].isArray(queries)) {
+    if (!_lodash2.default.isArray(queries)) {
       queries = [queries];
     }
     var cxn = this.connections.get(connectionName);
@@ -215,7 +228,7 @@ var adapter = {
 
       if (err) return cb(err);
 
-      _async2['default'].reduce(queries, [], function (memo, query, asyncCallback) {
+      _async2.default.reduce(queries, [], function (memo, query, asyncCallback) {
         var options = {};
 
         // Autocommit by default
@@ -245,11 +258,9 @@ var adapter = {
       });
     });
   },
-
   handleResults: function handleResults(results) {
     return results.length == 1 ? results[0] : results;
   },
-
   teardown: function teardown(conn, cb) {
     var _this3 = this;
 
@@ -265,22 +276,22 @@ var adapter = {
 
     var cxn = this.connections.get(conn);
     cxn.pool.close().then(function () {
-      _this3.connections['delete'](conn);
+      _this3.connections.delete(conn);
       cb();
-    })['catch'](cb);
+    }).catch(cb);
   },
-
   createEach: function createEach(connectionName, table, records, cb) {
     cb();
   },
+
 
   // Add a new row to the table
   create: function create(connectionName, table, data, cb) {
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[table];
 
-    var schemaName = collection.meta && collection.meta.schemaName ? _utils2['default'].escapeName(collection.meta.schemaName) + '.' : '';
-    var tableName = schemaName + _utils2['default'].escapeName(table);
+    var schemaName = collection.meta && collection.meta.schemaName ? _utils2.default.escapeName(collection.meta.schemaName) + '.' : '';
+    var tableName = schemaName + _utils2.default.escapeName(table);
 
     // Build up a SQL Query
     var schema = connectionObject.schema;
@@ -288,11 +299,11 @@ var adapter = {
 
     // Prepare values
     Object.keys(data).forEach(function (value) {
-      data[value] = _utils2['default'].prepareValue(data[value]);
+      data[value] = _utils2.default.prepareValue(data[value]);
     });
 
     var definition = collection.definition;
-    _lodash2['default'].each(definition, function (column, name) {
+    _lodash2.default.each(definition, function (column, name) {
 
       if (fieldIsBoolean(column)) {
         // no boolean type in oracle, so save it as a number
@@ -300,10 +311,10 @@ var adapter = {
       }
     });
 
-    var sequel = new _waterlineSequel2['default'](schema, this.sqlOptions);
+    var sequel = new _waterlineSequel2.default(schema, this.sqlOptions);
 
     var incrementSequences = [];
-    var query = undefined;
+    var query = void 0;
 
     try {
       query = sequel.create(table, data);
@@ -311,14 +322,14 @@ var adapter = {
       return cb(e);
     }
 
-    var returningData = _utils2['default'].getReturningData(collection.definition);
+    var returningData = _utils2.default.getReturningData(collection.definition);
 
     var queryObj = {};
 
     if (returningData.params.length > 0) {
       query.query += ' RETURNING ' + returningData.fields.join(', ') + ' INTO ' + returningData.outfields.join(', ');
       query.values = query.values.concat(returningData.params);
-      queryObj.outFormat = _oracledb2['default'].OBJECT;
+      queryObj.outFormat = _oracledb2.default.OBJECT;
     }
 
     queryObj.sql = query.query;
@@ -326,16 +337,15 @@ var adapter = {
 
     this.executeQuery(connectionName, queryObj, function (err, results) {
       if (err) return cb(err);
-      cb(null, _utils2['default'].transformBulkOutbinds(results.outBinds, returningData.fields)[0]);
+      cb(null, _utils2.default.transformBulkOutbinds(results.outBinds, returningData.fields)[0]);
     });
   },
-
   find: function find(connectionName, collectionName, options, cb, connection) {
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[collectionName];
 
-    var sequel = new _waterlineSequel2['default'](connectionObject.schema, this.sqlOptions);
-    var query = undefined;
+    var sequel = new _waterlineSequel2.default(connectionObject.schema, this.sqlOptions);
+    var query = void 0;
     var limit = options.limit || null;
     var skip = options.skip || null;
     delete options.skip;
@@ -366,15 +376,14 @@ var adapter = {
       cb(null, results && results.rows);
     });
   },
-
   destroy: function destroy(connectionName, collectionName, options, cb, connection) {
     var _this4 = this;
 
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[collectionName];
 
-    var query = undefined;
-    var sequel = new _waterlineSequel2['default'](connectionObject.schema, this.sqlOptions);
+    var query = void 0;
+    var sequel = new _waterlineSequel2.default(connectionObject.schema, this.sqlOptions);
 
     try {
       query = sequel.destroy(collectionName, options);
@@ -396,7 +405,6 @@ var adapter = {
 
     return this.find(connectionName, collectionName, options, handler, connection);
   },
-
   drop: function drop(connectionName, collectionName, relations, cb, connection) {
     var _this5 = this;
 
@@ -414,10 +422,10 @@ var adapter = {
       var connectionObject = _this5.connections.get(connectionName);
       var collection = connectionObject.collections[tableName];
 
-      var autoIncrementFields = _utils2['default'].getAutoIncrementFields(collection.definition);
+      var autoIncrementFields = _utils2.default.getAutoIncrementFields(collection.definition);
       if (autoIncrementFields.length > 0) {
         autoIncrementFields.forEach(function (field) {
-          var sequenceName = _utils2['default'].getSequenceName(tableName, field);
+          var sequenceName = _utils2.default.getSequenceName(tableName, field);
           memo.push({
             sql: 'DROP SEQUENCE ' + sequenceName
           });
@@ -428,16 +436,15 @@ var adapter = {
 
     return this.executeQuery(connectionName, queries, cb);
   },
-
   update: function update(connectionName, collectionName, options, values, cb, connection) {
     //    var processor = new Processor();
     var connectionObject = this.connections.get(connectionName);
     var collection = connectionObject.collections[collectionName];
 
     // Build find query
-    var sequel = new _waterlineSequel2['default'](connectionObject.schema, this.sqlOptions);
+    var sequel = new _waterlineSequel2.default(connectionObject.schema, this.sqlOptions);
 
-    var query = undefined;
+    var query = void 0;
     // Build query
     try {
       query = sequel.update(collectionName, options, values);
@@ -445,7 +452,7 @@ var adapter = {
       return cb(e);
     }
 
-    var returningData = _utils2['default'].getReturningData(collection.definition);
+    var returningData = _utils2.default.getReturningData(collection.definition);
     var queryObj = {};
 
     if (returningData.params.length > 0) {
@@ -459,14 +466,14 @@ var adapter = {
     // Run query
     return this.executeQuery(connectionName, queryObj, function (err, results) {
       if (err) return cb(err);
-      cb(null, _utils2['default'].transformBulkOutbinds(results.outBinds, returningData.fields));
+      cb(null, _utils2.default.transformBulkOutbinds(results.outBinds, returningData.fields));
     });
   }
 };
 
 function fieldIsBoolean(column) {
-  return !_lodash2['default'].isUndefined(column.type) && column.type === 'boolean';
+  return !_lodash2.default.isUndefined(column.type) && column.type === 'boolean';
 }
 
-exports['default'] = adapter;
+exports.default = adapter;
 module.exports = exports['default'];
